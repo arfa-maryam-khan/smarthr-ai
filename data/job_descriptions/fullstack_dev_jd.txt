@@ -1,0 +1,24 @@
+FULL STACK DEVELOPER
+
+REQUIRED SKILLS:
+- 3+ years of JavaScript/TypeScript experience
+- React or Angular frontend development
+- Node.js backend development
+- SQL databases (PostgreSQL, MySQL)
+- RESTful API design
+- Git version control
+
+PREFERRED:
+- AWS or cloud experience
+- Docker
+- GraphQL
+- CI/CD
+
+RESPONSIBILITIES:
+- Build web applications
+- Develop REST APIs
+- Write tests
+- Collaborate with designers
+
+EDUCATION: Bachelor's in CS or related field
+EXPERIENCE: 3+ years

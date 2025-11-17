@@ -1,0 +1,35 @@
+SENIOR SOFTWARE ENGINEER - MACHINE LEARNING
+
+We are seeking an experienced ML Engineer to join our AI team.
+
+REQUIRED SKILLS:
+- 5+ years of Python development experience
+- Strong experience with Machine Learning frameworks (TensorFlow, PyTorch, Scikit-learn)
+- Experience with NLP and text processing
+- Proficiency in SQL and NoSQL databases
+- Cloud platforms (AWS, GCP, or Azure)
+- Docker and Kubernetes
+- REST API development
+- Git version control
+
+PREFERRED SKILLS:
+- Experience with LLMs and RAG systems
+- FastAPI or Flask framework
+- CI/CD pipelines
+- Agile/Scrum methodologies
+- Published research papers
+
+RESPONSIBILITIES:
+- Design and implement ML pipelines
+- Develop scalable backend services
+- Collaborate with data scientists and product teams
+- Code review and mentoring junior engineers
+- Write technical documentation
+- Stay current with latest ML research
+
+EDUCATION:
+- Bachelor's or Master's in Computer Science or related field
+
+EXPERIENCE:
+- 5+ years in software development
+- 2+ years in ML/AI projects

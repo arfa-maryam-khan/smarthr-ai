@@ -1,0 +1,22 @@
+{
+  "technical_skills": [
+    "Python", "Java", "JavaScript", "TypeScript", "C++", "C#", "Ruby", "Go", "Rust", "PHP", "Swift", "Kotlin",
+    "React", "Angular", "Vue.js", "Svelte", "Next.js", "Node.js", "Express", "Django", "Flask", "FastAPI", "Spring Boot",
+    "SQL", "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "Cassandra", "DynamoDB",
+    "AWS", "Azure", "GCP", "Docker", "Kubernetes", "Jenkins", "GitLab CI", "GitHub Actions", "Terraform",
+    "Git", "CI/CD", "DevOps", "Linux", "Bash", "PowerShell",
+    "Machine Learning", "Deep Learning", "NLP", "Computer Vision", "Data Science",
+    "TensorFlow", "PyTorch", "Scikit-learn", "Keras", "Pandas", "NumPy", "Matplotlib", "Seaborn",
+    "REST API", "GraphQL", "gRPC", "Microservices", "WebSockets",
+    "Agile", "Scrum", "JIRA", "Confluence",
+    "HTML", "CSS", "Sass", "Tailwind", "Bootstrap", "Material UI",
+    "Webpack", "Vite", "Babel", "ESLint", "Jest", "Pytest",
+    "Tableau", "Power BI", "Looker", "Excel",
+    "Figma", "Adobe XD", "Sketch"
+  ],
+  "soft_skills": [
+    "Leadership", "Communication", "Teamwork", "Problem Solving",
+    "Critical Thinking", "Time Management", "Adaptability", "Creativity",
+    "Collaboration", "Conflict Resolution", "Mentoring"
+  ]
+}

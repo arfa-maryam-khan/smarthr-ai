@@ -1,0 +1,17 @@
+DATA ANALYST
+
+REQUIRED SKILLS:
+- 2+ years SQL experience
+- Python (Pandas, NumPy)
+- Data visualization (Tableau, Power BI, or Plotly)
+- Excel advanced functions
+- Statistical analysis
+
+RESPONSIBILITIES:
+- Create dashboards and reports
+- Analyze business metrics
+- Support data-driven decision making
+- Conduct A/B tests
+
+EDUCATION: Bachelor's in Statistics, Math, or related
+EXPERIENCE: 2+ years
