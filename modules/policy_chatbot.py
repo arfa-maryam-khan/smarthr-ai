@@ -1,8 +1,19 @@
 """
-HR Policy Chatbot using RAG (Retrieval-Augmented Generation)
-Architecture: Sentence-BERT + FAISS + Groq LLM
-This is the industry-standard approach for document Q&A
+HR Policy Chatbot - Your friendly AI assistant for company policies
+
+This chatbot uses RAG (Retrieval-Augmented Generation) to answer questions about
+HR policies. Think of it like a super-smart search engine that can understand what
+you're really asking and give you actual answers, not just matching keywords.
+
+How it works:
+1. We break policy documents into small chunks
+2. Convert each chunk into a "meaning vector" (semantic embedding)
+3. When you ask a question, we find the most relevant chunks
+4. An AI reads those chunks and gives you a natural answer
+
+Tech stack: Sentence-BERT for understanding, FAISS for fast search, Groq for answers
 """
+
 import os
 import pickle
 from typing import List, Dict, Optional
@@ -11,313 +22,343 @@ import faiss
 import numpy as np
 from groq import Groq
 from dotenv import load_dotenv
-from modules.utils import extract_text_from_pdf, chunk_text
+from modules.utils import extract_text_from_pdf
 
 load_dotenv()
 
+
 class PolicyChatbot:
     """
-    RAG-based HR Policy Chatbot
+    An AI assistant that answers questions about your company's HR policies.
     
-    Why this architecture?
-    - Sentence-BERT: State-of-the-art for semantic search (better than keyword matching)
-    - FAISS: Production-grade vector search (used by Meta, handles billions of vectors)
-    - Groq LLM: Accurate response generation grounded in retrieved context
-    - Result: No hallucinations, cites sources, handles complex queries
+    Unlike a regular search, this understands what you mean - so asking "How many
+    vacation days?" will find the answer even if the policy says "PTO allowance"
+    instead of "vacation days".
     """
     
-    def __init__(self, policy_dir: str = "data/policies/"):
-        """Initialize chatbot with optimal models"""
-        self.policy_dir = policy_dir
-        self.documents = []
-        self.embeddings = None
-        self.index = None
+    def __init__(self, data_dir: str = "data/policies/"):
+        """
+        Set up the chatbot with AI models and get ready to load policies.
         
-        # Sentence-BERT: Best pretrained model for semantic similarity
-        print("🔄 Loading Sentence-BERT (all-MiniLM-L6-v2)...")
-        print("   Why: 384-dim embeddings, 22M params, fast inference")
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        print("✅ Sentence-BERT loaded!")
+        Args:
+            data_dir: Folder where your policy PDF files are stored
+        """
+        self.data_dir = data_dir
         
-        # Groq LLM for response generation
+        # Storage for our policy documents and their chunks
+        self.documents = []  # Original docs: [{source, content, chunks}]
+        self.chunks = []  # All text chunks combined from all documents
+        self.chunk_sources = []  # Keeps track of which chunk came from which file
+        self.index = None  # FAISS search index (built later)
+        
+        # Load the AI model that understands text meaning
+        print("🔄 Loading Sentence-BERT (the brain that understands your questions)...")
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        print("✅ Ready to understand your questions!")
+        
+        # Set up the AI that generates natural language answers
         api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("❌ GROQ_API_KEY not found in .env file!")
-        self.client = Groq(api_key=api_key)
-        print("✅ Groq client initialized!")
         
+        # If not in environment, check Streamlit secrets (for cloud deployment)
+        if not api_key:
+            try:
+                import streamlit as st
+                if hasattr(st, 'secrets') and 'GROQ_API_KEY' in st.secrets:
+                    api_key = st.secrets['GROQ_API_KEY']
+            except:
+                pass
+        
+        if not api_key:
+            raise ValueError("Oops! Can't find GROQ_API_KEY. Add it to your .env file or Streamlit secrets.")
+        
+        self.client = Groq(api_key=api_key)
+        print("✅ AI assistant ready to answer questions!")
+    
+    
+    def chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
+        """
+        Break long documents into bite-sized pieces that the AI can work with.
+        
+        Why chunk? Large documents are hard to process, and we need to find the exact
+        section that answers each question. We use overlapping chunks so context isn't
+        lost when we split between sentences.
+        
+        Args:
+            text: The full document text
+            chunk_size: How many words per chunk (500 is a sweet spot)
+            overlap: How many words to repeat between chunks (keeps context)
+        
+        Returns:
+            List of text chunks, like pages in a book
+        
+        Example:
+            "Policy says X. Policy says Y. Policy says Z."
+            → ["Policy says X. Policy says Y.", "Policy says Y. Policy says Z."]
+        """
+        words = text.split()
+        chunks = []
+        
+        # Slide through the text with overlapping windows
+        for i in range(0, len(words), chunk_size - overlap):
+            chunk = ' '.join(words[i:i + chunk_size])
+            if chunk.strip():  # Don't keep empty chunks
+                chunks.append(chunk)
+        
+        # If document is tiny, just return it as-is
+        return chunks if chunks else [text]
+    
+    
     def load_policies(self) -> bool:
         """
-        Load policy documents and generate embeddings
+        Read all PDF policy documents from the policies folder.
         
-        Process:
-        1. Extract text from PDFs (PyPDF2 - just file I/O)
-        2. Split into chunks (overlap for context preservation)
-        3. Generate embeddings (Sentence-BERT - semantic understanding)
-        4. Cache everything (fast subsequent loads)
+        This scans your data/policies/ folder for PDF files and extracts the text
+        from each one. We don't actually process them yet - that happens in
+        build_vector_store().
+        
+        Returns:
+            True if we found and loaded at least one document, False otherwise
         """
-        print(f"\n📂 Loading policies from: {self.policy_dir}")
+        print("📂 Looking for policy documents...")
         
-        os.makedirs(self.policy_dir, exist_ok=True)
+        # Make sure the folder exists
+        os.makedirs(self.data_dir, exist_ok=True)
         
-        # Check for cached embeddings (huge speedup!)
-        cache_file = 'models/embeddings/policy_cache.pkl'
+        # Find all PDF files in the folder
+        policy_files = [f for f in os.listdir(self.data_dir) if f.endswith('.pdf')]
         
-        if os.path.exists(cache_file):
-            try:
-                print("⚡ Loading cached embeddings (instant!)...")
-                with open(cache_file, 'rb') as f:
-                    cache = pickle.load(f)
-                    self.documents = cache['documents']
-                    self.embeddings = cache['embeddings']
-                print(f"✅ Loaded {len(self.documents)} cached chunks!")
-                return True
-            except Exception as e:
-                print(f"⚠️ Cache load failed: {e}. Rebuilding...")
+        print(f"📄 Found {len(policy_files)} PDF files: {policy_files}")
         
-        # Load PDF files
-        pdf_files = [f for f in os.listdir(self.policy_dir) if f.endswith('.pdf')]
-        
-        if not pdf_files:
-            print("⚠️ No PDF files found! Add policy PDFs to data/policies/")
+        if not policy_files:
+            print("❌ No policy files found! Add some PDFs to the policies folder.")
             return False
         
-        print(f"📄 Found {len(pdf_files)} PDF files")
-        
-        # Process each PDF
-        for filename in pdf_files:
-            filepath = os.path.join(self.policy_dir, filename)
-            print(f"   Processing: {filename}")
+        # Read each PDF and extract the text
+        for filename in policy_files:
+            filepath = os.path.join(self.data_dir, filename)
+            print(f"📖 Reading {filename}...")
             
-            # Extract text (PyPDF2 - just reads the file)
+            # PyPDF2 extracts the actual text from the PDF
             text = extract_text_from_pdf(filepath)
             
-            if not text.strip():
-                print(f"   ⚠️ No text extracted from {filename}")
-                continue
-            
-            # Chunk with overlap (preserves context across boundaries)
-            chunks = chunk_text(text, chunk_size=500, overlap=50)
-            
-            # Store with metadata for source attribution
-            for i, chunk in enumerate(chunks):
+            if text.strip():
+                print(f"✅ Got {len(text)} characters from {filename}")
                 self.documents.append({
-                    'source': filename,
-                    'chunk_id': i,
-                    'content': chunk
+                    'content': text,
+                    'source': filename,  # Keep track of where this came from
+                    'chunks': []  # Will fill this in build_vector_store()
+                })
+            else:
+                print(f"⚠️ Couldn't extract text from {filename} (might be scanned image?)")
+        
+        print(f"✅ Successfully loaded {len(self.documents)} policy documents")
+        return len(self.documents) > 0
+    
+    
+    def build_vector_store(self) -> bool:
+        """
+        Process all documents into a searchable format that AI can understand.
+        
+        This is where the magic happens:
+        1. Break documents into chunks (small pieces)
+        2. Convert each chunk into a "meaning vector" using AI
+        3. Build a FAISS index for lightning-fast search
+        
+        The result? When someone asks "How many sick days?", we can instantly find
+        every chunk that talks about sick leave, even if they use different words.
+        
+        Returns:
+            True if everything worked, False if something went wrong
+        """
+        print("🧠 Building the search engine for your policies...")
+        
+        all_chunks = []
+        chunk_metadata = []
+        
+        # Break each document into chunks
+        for doc in self.documents:
+            print(f"📝 Breaking {doc['source']} into chunks...")
+            
+            chunks = self.chunk_text(doc['content'])
+            doc['chunks'] = chunks
+            
+            print(f"   Created {len(chunks)} chunks")
+            
+            # Keep track of which chunk came from which document
+            for i, chunk in enumerate(chunks):
+                all_chunks.append(chunk)
+                chunk_metadata.append({
+                    'source': doc['source'],
+                    'chunk_id': i
                 })
         
-        if not self.documents:
-            print("❌ No documents loaded!")
+        print(f"📊 Total: {len(all_chunks)} chunks across all documents")
+        
+        if not all_chunks:
+            print("❌ No content to process!")
             return False
         
-        print(f"✅ Loaded {len(self.documents)} text chunks")
+        # Convert text chunks into numbers that represent their meaning
+        # This is called "semantic embedding" - similar meanings = similar numbers
+        print(f"🧠 Converting {len(all_chunks)} chunks into AI-understandable format...")
+        embeddings = self.model.encode(
+            all_chunks, 
+            convert_to_tensor=False, 
+            show_progress_bar=True
+        )
         
-        # Generate embeddings (Sentence-BERT)
-        print("🧠 Generating semantic embeddings...")
-        print("   This captures meaning, not just keywords")
+        # Build a FAISS index for super-fast similarity search
+        # FAISS = Facebook AI Similarity Search (production-grade, handles billions of vectors)
+        print("🔍 Creating search index...")
+        dimension = embeddings.shape[1]  # Usually 384 for this model
+        self.index = faiss.IndexFlatL2(dimension)  # L2 = Euclidean distance
+        self.index.add(embeddings)
         
-        texts = [doc['content'] for doc in self.documents]
+        # Store everything we need for later searches
+        self.chunks = all_chunks
+        self.chunk_sources = chunk_metadata
         
-        try:
-            # Batch encoding for efficiency
-            self.embeddings = self.embedding_model.encode(
-                texts,
-                show_progress_bar=True,
-                convert_to_numpy=True,
-                batch_size=32
-            )
-            
-            # Cache for instant future loads
-            os.makedirs('models/embeddings', exist_ok=True)
-            with open(cache_file, 'wb') as f:
-                pickle.dump({
-                    'documents': self.documents,
-                    'embeddings': self.embeddings
-                }, f)
-            
-            print("💾 Embeddings cached successfully!")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error generating embeddings: {e}")
-            return False
+        print(f"✅ Search engine ready!")
+        print(f"   📚 {len(self.documents)} documents indexed")
+        print(f"   📄 {len(self.chunks)} total chunks")
+        print(f"   🔍 Index size: {self.index.ntotal} vectors")
+        
+        return True
     
-    def build_vector_store(self, force_rebuild: bool = False) -> bool:
-        """
-        Build FAISS index for fast similarity search
-        
-        Why FAISS?
-        - Used by Meta in production (billions of vectors)
-        - 100x faster than brute force search
-        - Exact nearest neighbor search (L2 distance)
-        """
-        index_path = 'models/embeddings/faiss.index'
-        
-        # Load existing index
-        if os.path.exists(index_path) and not force_rebuild:
-            try:
-                print("⚡ Loading cached FAISS index...")
-                self.index = faiss.read_index(index_path)
-                print(f"✅ Index loaded ({self.index.ntotal} vectors)!")
-                return True
-            except Exception as e:
-                print(f"⚠️ Failed to load index: {e}. Rebuilding...")
-        
-        if self.embeddings is None:
-            print("❌ No embeddings available! Load policies first.")
-            return False
-        
-        print("🔄 Building FAISS index...")
-        
-        try:
-            # L2 (Euclidean) distance index - exact search
-            dimension = self.embeddings.shape[1]
-            self.index = faiss.IndexFlatL2(dimension)
-            
-            # Add all embeddings
-            self.index.add(self.embeddings.astype('float32'))
-            
-            # Save for future use
-            os.makedirs('models/embeddings', exist_ok=True)
-            faiss.write_index(self.index, index_path)
-            
-            print(f"✅ FAISS index built ({self.index.ntotal} vectors)!")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error building index: {e}")
-            return False
     
-    def retrieve_context(self, query: str, top_k: int = 3) -> List[Dict]:
+    def retrieve_relevant_chunks(self, query: str, top_k: int = 5) -> List[Dict]:
         """
-        Retrieve most relevant document chunks using semantic search
+        Find the most relevant policy sections for a given question.
         
-        Process:
-        1. Encode query with same model (Sentence-BERT)
-        2. Search FAISS index for nearest neighbors
-        3. Return top-k most similar chunks
+        This is the "retrieval" part of RAG. We convert the question into the same
+        format as our chunks, then use FAISS to find the closest matches.
         
-        Why semantic search?
-        - "PTO" query matches "paid time off" policy (understands synonyms)
-        - "sick days" query matches "medical leave" (understands concepts)
+        Why this works: If you ask "vacation days" and a chunk talks about "PTO",
+        the AI embeddings will be similar because they mean the same thing.
+        
+        Args:
+            query: The employee's question
+            top_k: How many relevant chunks to return (5 is usually enough)
+        
+        Returns:
+            List of the most relevant chunks with their source documents
         """
-        if self.index is None or not self.documents:
-            print("⚠️ Vector store not initialized!")
+        print(f"\n🔍 Searching for: '{query}'")
+        print(f"🔍 Looking for top {top_k} most relevant sections...")
+        
+        if self.index is None:
+            print("❌ Search index not ready! Run build_vector_store() first.")
             return []
         
-        try:
-            # Encode query with same model as documents
-            query_embedding = self.embedding_model.encode(
-                [query],
-                convert_to_numpy=True
-            )
+        # Convert the question into the same format as our document chunks
+        query_embedding = self.model.encode([query], convert_to_tensor=False)
+        
+        # Find the closest matching chunks using FAISS
+        distances, indices = self.index.search(query_embedding, top_k)
+        
+        # Gather the results
+        results = []
+        for i, (distance, idx) in enumerate(zip(distances[0], indices[0])):
+            chunk_info = {
+                'content': self.chunks[idx],
+                'source': self.chunk_sources[idx]['source'],
+                'distance': float(distance),  # Lower = more similar
+                'rank': i + 1
+            }
+            results.append(chunk_info)
             
-            # Search FAISS index
-            k = min(top_k, len(self.documents))
-            distances, indices = self.index.search(
-                query_embedding.astype('float32'),
-                k
-            )
-            
-            # Get retrieved documents
-            retrieved_docs = []
-            for idx in indices[0]:
-                if 0 <= idx < len(self.documents):
-                    retrieved_docs.append(self.documents[idx])
-            
-            return retrieved_docs
-            
-        except Exception as e:
-            print(f"❌ Error retrieving context: {e}")
-            return []
+            print(f"   {i+1}. {chunk_info['source']} (similarity score: {distance:.2f})")
+        
+        print(f"✅ Found {len(results)} relevant sections")
+        
+        # Show which documents were helpful
+        unique_sources = list(set(r['source'] for r in results))
+        print(f"📚 Information from: {', '.join(unique_sources)}")
+        
+        return results
+    
     
     def generate_response(self, query: str) -> Dict:
         """
-        Generate answer using RAG (Retrieval-Augmented Generation)
+        Answer an employee's question about HR policies.
         
-        RAG Process:
-        1. RETRIEVE: Find relevant policy chunks (semantic search)
-        2. AUGMENT: Add retrieved context to LLM prompt
-        3. GENERATE: LLM answers ONLY from provided context
+        This is the full RAG pipeline:
+        1. RETRIEVE: Find relevant policy chunks using semantic search
+        2. AUGMENT: Give those chunks to the AI as context
+        3. GENERATE: AI writes a natural answer based only on the policies
         
-        Benefits:
-        - No hallucinations (LLM can't make up policies)
-        - Source attribution (can cite which policy)
-        - Up-to-date (no training needed, just update PDFs)
+        The result? Accurate answers that cite sources, no hallucinations.
+        
+        Args:
+            query: The employee's question (e.g., "How many vacation days do I get?")
+        
+        Returns:
+            Dictionary with:
+                - answer: The AI's response
+                - sources: Which policy files were used
         """
         
-        # Step 1: RETRIEVE relevant context
-        context_docs = self.retrieve_context(query, top_k=3)
+        # Step 1: Find the most relevant policy sections
+        retrieved_chunks = self.retrieve_relevant_chunks(query, top_k=5)
         
-        if not context_docs:
+        if not retrieved_chunks:
             return {
-                'answer': "I don't have any policy documents loaded. Please upload HR policy PDFs to the data/policies/ folder.",
-                'sources': [],
-                'context': []
+                'answer': "I don't have any policy documents loaded yet. Upload some PDFs first!",
+                'sources': []
             }
         
-        # Step 2: AUGMENT - Build context string
+        # Step 2: Combine the relevant chunks into context for the AI
         context = "\n\n".join([
-            f"[Source: {doc['source']}]\n{doc['content']}"
-            for doc in context_docs
+            f"[From {chunk['source']}]\n{chunk['content']}"
+            for chunk in retrieved_chunks
         ])
         
-        # Step 3: GENERATE - Prompt LLM with context
-        prompt = f"""You are a helpful HR assistant. Answer the employee's question based ONLY on the HR policy documents provided below.
+        # Keep track of which files we're citing
+        sources = list(set(chunk['source'] for chunk in retrieved_chunks))
+        
+        # Step 3: Ask the AI to answer based on the context
+        prompt = f"""You are a helpful HR assistant. Answer the employee's question using ONLY the policy documents provided below.
 
-**IMPORTANT**: Only use information from the policy context. If the answer is not in the provided policies, clearly state that.
-
-**HR Policy Context:**
+HR Policy Context:
 {context}
 
-**Employee Question:** {query}
+Employee Question: {query}
 
-**Instructions:**
-- Provide a clear, concise answer
+Instructions:
+- Give a clear, helpful answer
 - ONLY use information from the policy documents above
-- Cite which policy document the information comes from (e.g., "According to leave_policy.pdf...")
-- If the answer is not in the policies, say: "I don't have information about this in our current policy documents"
-- Be professional and helpful
+- Mention which policy document the info comes from (e.g., "According to leave_policy.pdf...")
+- If the answer isn't in the policies, say so honestly
 
-**Answer:**"""
+Answer:"""
         
         try:
-            # Call Groq LLM
+            # Call Groq's LLM (Llama 3.3) to generate the answer
             response = self.client.chat.completions.create(
-                model="llama-3.3-70b-versatile",  # Fast, accurate
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {
                         "role": "system", 
-                        "content": "You are a helpful HR assistant. Only answer based on provided policy documents. Never make up information."
+                        "content": "You are a helpful HR assistant. Only answer based on the provided policy documents. Never make up information."
                     },
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,  # Low temp = more factual
+                temperature=0.3,  # Low temperature = more factual, less creative
                 max_tokens=500
             )
             
             answer = response.choices[0].message.content
-            sources = list(set([doc['source'] for doc in context_docs]))
+            
+            print(f"✅ Generated answer using: {', '.join(sources)}")
             
             return {
                 'answer': answer,
-                'sources': sources,
-                'context': context_docs
+                'sources': sources
             }
             
         except Exception as e:
+            print(f"❌ Error generating answer: {e}")
             return {
-                'answer': f"Error generating response: {str(e)}",
-                'sources': [],
-                'context': []
+                'answer': f"Sorry, something went wrong: {str(e)}",
+                'sources': []
             }
-    
-    def get_stats(self) -> Dict:
-        """Get chatbot statistics"""
-        return {
-            'total_documents': len(self.documents),
-            'total_chunks': len(self.documents),
-            'embedding_dimension': self.embeddings.shape[1] if self.embeddings is not None else 0,
-            'index_size': self.index.ntotal if self.index else 0
-        }

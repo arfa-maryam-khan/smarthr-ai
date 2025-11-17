@@ -1,6 +1,16 @@
 """
-SmartHR AI - Intelligent HR Assistant
+SmartHR AI - Main Application Interface
+
+This is the heart of the Streamlit app. It handles:
+- Navigation between pages (Home, Policy Assistant, Recruitment Hub)
+- UI rendering for all three pages
+- Session state management (keeps data between reruns)
+- File uploads and processing
+
+Think of this as the "frontend" that users interact with. All the heavy lifting
+(AI models, parsing, screening) happens in the modules/ folder.
 """
+
 import streamlit as st
 import os
 from modules.policy_chatbot import PolicyChatbot
@@ -8,365 +18,463 @@ from modules.recruitment import RecruitmentEngine
 import pandas as pd
 import plotly.graph_objects as go
 
-# Page config
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
+# Must be the first Streamlit command - sets up the page layout and browser tab
 st.set_page_config(
     page_title="SmartHR AI",
     page_icon="🤖",
-    layout="wide"
+    layout="wide"  # Use full screen width
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding: 10px 20px;
-    }
-</style>
-""", unsafe_allow_html=True)
 
-# Initialize session state
+# ============================================================
+# SESSION STATE INITIALIZATION
+# ============================================================
+
+# Streamlit reruns the entire script on every interaction. Session state lets us
+# persist data between reruns (like keeping a chatbot loaded or remembering results).
+
+# Policy chatbot state
 if 'policy_chatbot' not in st.session_state:
-    st.session_state.policy_chatbot = None
-    st.session_state.policies_loaded = False
+    st.session_state.policy_chatbot = None  # The loaded chatbot instance
+    st.session_state.policies_loaded = False  # Whether policies are indexed
 
+# Recruitment engine state
 if 'recruitment_engine' not in st.session_state:
-    st.session_state.recruitment_engine = None
+    st.session_state.recruitment_engine = None  # The loaded engine instance
+    st.session_state.screening_results = None  # Most recent screening results
 
-if 'screening_results' not in st.session_state:
-    st.session_state.screening_results = None
-
+# Chat history for policy assistant
 if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
+    st.session_state.chat_history = []  # List of Q&A pairs
 
-# Sidebar
+# Current page tracking
+if 'page' not in st.session_state:
+    st.session_state.page = 'home'  # Start on home page
+
+
+# ============================================================
+# NAVIGATION FUNCTIONS
+# ============================================================
+
+# These callback functions change which page is displayed.
+# Using callbacks (on_click) is more reliable than directly setting state
+# because Streamlit processes callbacks before the main script runs.
+
+def nav_home():
+    """Navigate to the home page"""
+    st.session_state.page = 'home'
+
+def nav_policy():
+    """Navigate to the policy assistant page"""
+    st.session_state.page = 'policy'
+
+def nav_recruitment():
+    """Navigate to the recruitment hub page"""
+    st.session_state.page = 'recruitment'
+
+
+# ============================================================
+# SIDEBAR NAVIGATION
+# ============================================================
+
+# The sidebar is visible on all pages and provides navigation
 with st.sidebar:
     st.title("🤖 SmartHR AI")
     st.markdown("---")
     
-    # Initialize page in session state if not exists
-    if 'current_page' not in st.session_state:
-        st.session_state.current_page = "🏠 Home"
-    
-    # Check if navigation was triggered from a button
-    if 'nav_target' in st.session_state and st.session_state.nav_target:
-        st.session_state.current_page = st.session_state.nav_target
-        st.session_state.nav_target = None
-    
-    # Get the index of the current page
-    pages = ["🏠 Home", "💬 Policy Assistant", "📄 Recruitment Hub"]
-    current_index = pages.index(st.session_state.current_page) if st.session_state.current_page in pages else 0
-    
-    # Radio button for navigation
-    page = st.radio(
-        "Navigate",
-        pages,
-        index=current_index,
-        key="page_radio"
-    )
-    
-    # Update session state when radio changes
-    if page != st.session_state.current_page:
-        st.session_state.current_page = page
+    # Navigation buttons - on_click triggers the callback before rerun
+    st.button("🏠 Home", on_click=nav_home, use_container_width=True)
+    st.button("💬 Policy Assistant", on_click=nav_policy, use_container_width=True)
+    st.button("📄 Recruitment Hub", on_click=nav_recruitment, use_container_width=True)
     
     st.markdown("---")
-    
-    # Quick home button (only show if not on home page)
-    if st.session_state.current_page != "🏠 Home":
-        if st.button("🏠 Quick Home", use_container_width=True, key="sidebar_home"):
-            st.session_state.current_page = "🏠 Home"
-            st.rerun()
-        st.markdown("---")
-    
-    st.caption("Powered by Groq + Sentence-BERT + FAISS")
+    st.caption("Powered by Groq • Sentence-BERT • FAISS")
+
+
 # ============================================================
 # HOME PAGE
 # ============================================================
-if st.session_state.current_page == "🏠 Home":
-    st.markdown('<p class="main-header">🤖 SmartHR AI</p>', unsafe_allow_html=True)
+
+if st.session_state.page == 'home':
+    # Main header
+    st.title("🤖 SmartHR AI")
     st.markdown("### Intelligent HR Assistant for Policy Management & Recruitment")
     
     st.markdown("---")
     
+    # Two-column layout for the two main features
     col1, col2 = st.columns(2)
     
+    # Policy Assistant card
     with col1:
         st.markdown("### 💬 Policy Assistant")
-        st.info("""
-        **Upload policy PDFs** and ask questions in natural language.
+        st.info(
+            "Upload HR policy PDFs and ask questions in natural language. "
+            "AI answers with source citations using RAG (Retrieval-Augmented Generation)."
+        )
         
-        AI answers with source citations using RAG (Retrieval-Augmented Generation).
-        """)
-        
-        # Navigation button
-        if st.button("🚀 Launch Policy Assistant", key="btn_policy", use_container_width=True, type="primary"):
-            st.session_state.current_page = "💬 Policy Assistant"
-            st.rerun()
+        # Launch button navigates to policy page
+        st.button(
+            "🚀 Launch Policy Assistant",
+            key="launch_policy",
+            on_click=nav_policy,
+            use_container_width=True,
+            type="primary"
+        )
     
+    # Recruitment Hub card
     with col2:
         st.markdown("### 📄 Recruitment Hub")
-        st.info("""
-        **Upload resumes + JD** to get intelligent candidate rankings.
+        st.info(
+            "Upload resumes + job description to get intelligent candidate rankings "
+            "and auto-generated interview questions."
+        )
         
-        Auto-generate personalized interview questions for shortlisted candidates.
-        """)
-        
-        # Navigation button
-        if st.button("🚀 Launch Recruitment Hub", key="btn_recruit", use_container_width=True, type="primary"):
-            st.session_state.current_page = "📄 Recruitment Hub"
-            st.rerun()
+        # Launch button navigates to recruitment page
+        st.button(
+            "🚀 Launch Recruitment Hub",
+            key="launch_recruit",
+            on_click=nav_recruitment,
+            use_container_width=True,
+            type="primary"
+        )
     
+    # Tech stack footer
     st.markdown("---")
     st.markdown("### 🔧 Tech Stack")
     st.markdown("**Sentence-BERT** • **FAISS** • **Groq Llama 3.3** • **PyPDF2**")
-# ============================================================
-# POLICY ASSISTANT
-# ============================================================
-elif st.session_state.current_page == "💬 Policy Assistant":
-    # Back to Home button
-    if st.button("← Back to Home", key="home_from_policy", type="secondary"):
-        st.session_state.current_page = "🏠 Home"
-        st.rerun()
 
+
+# ============================================================
+# POLICY ASSISTANT PAGE
+# ============================================================
+
+elif st.session_state.page == 'policy':
+    # Back button at the top
+    st.button("← Back to Home", key="back_policy", on_click=nav_home)
+    
     st.title("💬 HR Policy Assistant")
     
-    # Upload section
+    # Document upload section (collapsed if policies already loaded)
     with st.expander("📤 Upload Policy Documents", expanded=not st.session_state.policies_loaded):
         uploaded_files = st.file_uploader(
             "Upload PDF files",
             type=['pdf'],
-            accept_multiple_files=True
+            accept_multiple_files=True,
+            key="policy_uploader"
         )
         
-        if st.button("🚀 Process Documents", type="primary"):
+        # Process button - does the heavy lifting
+        if st.button("🚀 Process Documents", type="primary", key="process_docs"):
             if uploaded_files:
-                with st.spinner("Processing..."):
-                    # Save files
+                with st.spinner("Processing documents... This may take a minute."):
+                    # Save uploaded files to disk
                     os.makedirs('data/policies', exist_ok=True)
+                    
+                    # Clear old policy files first
                     for f in os.listdir('data/policies'):
                         if f.endswith('.pdf'):
                             os.remove(os.path.join('data/policies', f))
                     
+                    # Save new files
                     for file in uploaded_files:
                         with open(f"data/policies/{file.name}", "wb") as f:
                             f.write(file.getbuffer())
                     
                     try:
-                        # Initialize chatbot
+                        # Initialize chatbot and process the PDFs
                         chatbot = PolicyChatbot()
+                        
+                        # Load policies and build the searchable vector store
                         if chatbot.load_policies() and chatbot.build_vector_store():
                             st.session_state.policy_chatbot = chatbot
                             st.session_state.policies_loaded = True
-                            st.success("✅ Documents processed!")
-                            st.rerun()
+                            st.success("✅ Documents processed successfully!")
+                            st.rerun()  # Refresh to show the chat interface
                         else:
                             st.error("Failed to process documents")
+                            
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
             else:
-                st.warning("Please upload files first")
+                st.warning("Please upload PDF files first")
     
-    # Chat interface
+    # Chat interface (only show if policies are loaded)
     if st.session_state.policies_loaded:
         st.markdown("---")
         st.markdown("### 💭 Ask Questions")
         
-        query = st.text_input("Your question:", placeholder="e.g., How many vacation days?")
+        # Question input
+        query = st.text_input(
+            "Your question:",
+            placeholder="e.g., How many vacation days do I get?",
+            key="policy_query"
+        )
         
-        if st.button("Ask", type="primary") and query:
-            with st.spinner("Searching..."):
+        # Ask button - triggers the RAG pipeline
+        if st.button("Ask", type="primary", key="ask_button") and query:
+            with st.spinner("Searching policy documents..."):
                 try:
+                    # Call the chatbot to generate an answer
                     response = st.session_state.policy_chatbot.generate_response(query)
+                    
+                    # Add to chat history (newest first)
                     st.session_state.chat_history.insert(0, {
                         'q': query,
                         'a': response['answer'],
                         's': response['sources']
                     })
-                    st.rerun()
+                    
+                    st.rerun()  # Refresh to show the new Q&A
+                    
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                    st.error(f"Error generating answer: {str(e)}")
         
-        # Show history
-        for i, chat in enumerate(st.session_state.chat_history):
+        # Display chat history (all previous Q&As)
+        for chat in st.session_state.chat_history:
             st.markdown(f"**Q:** {chat['q']}")
             st.markdown(f"**A:** {chat['a']}")
+            
+            # Show which policy documents were used
             if chat['s']:
-                st.caption(f"Sources: {', '.join(chat['s'])}")
+                st.caption(f"📚 Sources: {', '.join(chat['s'])}")
+            
             st.markdown("---")
     else:
-        st.info("👆 Upload and process documents to start")
+        st.info("👆 Upload and process policy documents to start asking questions")
+
 
 # ============================================================
-# RECRUITMENT HUB
+# RECRUITMENT HUB PAGE
 # ============================================================
-elif st.session_state.current_page == "📄 Recruitment Hub":
-    # Back to Home button
-    if st.button("← Back to Home", key="home_from_policy", type="secondary"):
-        st.session_state.current_page = "🏠 Home"
-        st.rerun()
 
+elif st.session_state.page == 'recruitment':
+    # Back button at the top
+    st.button("← Back to Home", key="back_recruit", on_click=nav_home)
+    
     st.title("📄 Recruitment Hub")
     
-    # Initialize engine (with better error handling)
+    # Initialize the recruitment engine (only once per session)
+    # This loads all the AI models, so we do it lazily
     if st.session_state.recruitment_engine is None:
-        with st.spinner("Loading AI models... (first time takes ~1 min)"):
+        with st.spinner("Loading AI models... (first time takes ~1 minute)"):
             try:
                 st.session_state.recruitment_engine = RecruitmentEngine()
-                st.success("Ready!", icon="✅")
             except Exception as e:
-                st.error(f"Error: {str(e)}")
-                st.info("💡 Check your GROQ_API_KEY in .env file")
-                st.stop()
+                st.error(f"Failed to load recruitment engine: {str(e)}")
+                st.stop()  # Can't continue without the engine
     
+    # Two tabs: screening and interview questions
     tab1, tab2 = st.tabs(["🎯 Screen Candidates", "❓ Interview Questions"])
     
-    # TAB 1: Screen
+    
+    # ============================================================
+    # TAB 1: CANDIDATE SCREENING
+    # ============================================================
+    
     with tab1:
+        # Two-column layout for inputs
         col1, col2 = st.columns(2)
         
+        # Left column: Resume upload
         with col1:
             st.markdown("**Upload Resumes**")
-            resumes = st.file_uploader("PDF files", type=['pdf'], accept_multiple_files=True, key="res")
+            resumes = st.file_uploader(
+                "PDF files",
+                type=['pdf'],
+                accept_multiple_files=True,
+                key="resume_uploader"
+            )
         
+        # Right column: Job description
         with col2:
             st.markdown("**Job Description**")
-            jd = st.text_area("Paste JD here", height=200, key="jd")
+            jd = st.text_area(
+                "Paste job description here",
+                height=200,
+                key="jd_input"
+            )
         
-        threshold = st.slider("Shortlist threshold (%)", 0, 100, 50)
+        # Threshold slider - candidates above this score get shortlisted
+        threshold = st.slider(
+            "Shortlist threshold (%)",
+            min_value=0,
+            max_value=100,
+            value=50,
+            key="threshold_slider",
+            help="Candidates with scores above this will be shortlisted"
+        )
         
-        if st.button("🚀 Screen Candidates", type="primary"):
+        # Screen button - does the heavy lifting
+        if st.button("🚀 Screen Candidates", type="primary", key="screen_button"):
             if resumes and jd:
-                with st.spinner("Screening..."):
-                    # Save resumes
+                with st.spinner("Screening candidates... This may take a minute."):
+                    # Save uploaded resumes to disk
                     os.makedirs('temp/resumes', exist_ok=True)
+                    
+                    # Clear old resume files
                     for f in os.listdir('temp/resumes'):
                         os.remove(os.path.join('temp/resumes', f))
                     
+                    # Save new resumes and collect paths
                     paths = []
-                    for r in resumes:
-                        path = f"temp/resumes/{r.name}"
+                    for resume_file in resumes:
+                        path = f"temp/resumes/{resume_file.name}"
                         with open(path, "wb") as f:
-                            f.write(r.getbuffer())
+                            f.write(resume_file.getbuffer())
                         paths.append(path)
                     
                     try:
-                        results = st.session_state.recruitment_engine.screen_candidates(paths, jd, threshold)
+                        # Run the screening engine
+                        # This: extracts skills, compares to JD, calculates scores
+                        results = st.session_state.recruitment_engine.screen_candidates(
+                            paths,
+                            jd,
+                            threshold
+                        )
+                        
+                        # Store results in session state
                         st.session_state.screening_results = results
-                        st.session_state.current_jd = jd
-                        st.success(f"✅ Screened {len(results)} candidates!")
-                        st.rerun()
+                        st.session_state.current_jd = jd  # Save JD for question generation
+                        
+                        st.rerun()  # Refresh to show results
+                        
                     except Exception as e:
-                        st.error(f"Error: {str(e)}")
+                        st.error(f"Error during screening: {str(e)}")
+                        st.rerun()
             else:
-                st.warning("Upload resumes and JD first")
+                st.warning("Please upload resumes and provide a job description")
         
-        # Show results
+        # Display screening results (if we have any)
         if st.session_state.screening_results:
             st.markdown("---")
-            st.markdown("### 📊 Results")
+            st.markdown("### 📊 Screening Results")
             
+            # Convert results to DataFrame for easy display
             df = pd.DataFrame(st.session_state.screening_results)
             
-            # Metrics
+            # Summary metrics at the top
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Total", len(df))
+                st.metric("Total Candidates", len(df))
             with col2:
                 st.metric("Shortlisted", len(df[df['shortlisted']]))
             with col3:
-                st.metric("Avg Score", f"{df['final_score'].mean():.1f}")
+                st.metric("Average Score", f"{df['final_score'].mean():.1f}")
             
-            # Chart
-            fig = go.Figure(data=[
-                go.Bar(
-                    x=df['name'],
-                    y=df['final_score'],
-                    marker_color=['green' if s else 'red' for s in df['shortlisted']]
-                )
-            ])
-            fig.update_layout(title="Candidate Scores", xaxis_title="Name", yaxis_title="Score")
+            # Bar chart showing scores (green = shortlisted, red = not shortlisted)
+            fig = go.Figure(data=[go.Bar(
+                x=df['name'],
+                y=df['final_score'],
+                marker_color=['green' if shortlisted else 'red' for shortlisted in df['shortlisted']]
+            )])
+            fig.update_layout(
+                title="Candidate Scores",
+                xaxis_title="Candidate Name",
+                yaxis_title="Final Score"
+            )
             st.plotly_chart(fig, use_container_width=True)
             
-            # Table
+            # Detailed results table
             st.dataframe(
-                df[['name', 'email', 'final_score', 'similarity_score', 'skill_match_rate', 'matched_skills_count']],
+                df[[
+                    'name',
+                    'email',
+                    'final_score',
+                    'similarity_score',
+                    'skill_match_rate',
+                    'matched_skills_count'
+                ]],
                 use_container_width=True
             )
     
-    # TAB 2: Questions
+    
+    # ============================================================
+    # TAB 2: INTERVIEW QUESTIONS
+    # ============================================================
+    
     with tab2:
+        # Only show this tab if we have screening results
         if st.session_state.screening_results:
+            # Filter to only shortlisted candidates
             shortlisted = [r for r in st.session_state.screening_results if r['shortlisted']]
             
             if shortlisted:
-                candidate = st.selectbox("Select candidate", [c['name'] for c in shortlisted])
+                # Dropdown to select which candidate
+                candidate = st.selectbox(
+                    "Select candidate",
+                    [c['name'] for c in shortlisted],
+                    key="candidate_select"
+                )
+                
+                # Get the full info for this candidate
                 info = next(c for c in shortlisted if c['name'] == candidate)
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Score:** {info['final_score']}")
-                    st.write(f"**Experience:** {info['experience_years']} years")
-                with col2:
-                    st.write(f"**Matched Skills:** {', '.join(info['matched_skills'][:5])}")
+                # Show candidate summary
+                st.write(f"**Final Score:** {info['final_score']}")
+                st.write(f"**Matched Skills:** {', '.join(info['matched_skills'][:5])}")
                 
-                st.markdown("---")
+                # Slider for number of questions
+                num_q = st.slider(
+                    "Number of questions",
+                    min_value=3,
+                    max_value=10,
+                    value=5,
+                    key="num_questions"
+                )
                 
-                num_q = st.slider("Number of questions", 3, 10, 5)
-                
-                if st.button("🤖 Generate Questions", type="primary"):
-                    with st.spinner("Generating personalized questions with evaluation criteria..."):
+                # Generate questions button
+                if st.button("🤖 Generate Interview Questions", type="primary", key="generate_q"):
+                    with st.spinner("Generating personalized questions..."):
                         try:
+                            # Call the AI to generate questions
                             questions_data = st.session_state.recruitment_engine.generate_interview_questions(
                                 st.session_state.current_jd,
                                 info,
                                 num_q
                             )
                             
-                            st.markdown("### ❓ Interview Questions")
-                            st.info("💡 Keywords below each question help evaluate if the candidate's answer covers key concepts")
+                            # Store in session state
+                            st.session_state.generated_questions = questions_data
+                            st.rerun()  # Refresh to display questions
                             
-                            for i, q_data in enumerate(questions_data, 1):
-                                # Question
-                                st.markdown(f"**{i}. {q_data['question']}**")
-                                
-                                # Keywords in colored badges
+                        except Exception as e:
+                            st.error(f"Error generating questions: {str(e)}")
+                            st.rerun()
+                
+                # Display generated questions (after rerun)
+                if 'generated_questions' in st.session_state and st.session_state.generated_questions:
+                    st.markdown("### ❓ Interview Questions")
+                    st.info("💡 Keywords below each question help you evaluate the candidate's answer")
+                    
+                    # Show each question with its evaluation keywords
+                    for i, q_data in enumerate(st.session_state.generated_questions, 1):
+                        if isinstance(q_data, dict):
+                            # Show the question
+                            st.markdown(f"**{i}. {q_data.get('question', 'Question unavailable')}**")
+                            
+                            # Show evaluation keywords as colored badges
+                            if 'keywords' in q_data and q_data['keywords']:
                                 keywords_html = " ".join([
-                                    f'<span style="background-color: #e1f5ff; padding: 4px 8px; border-radius: 4px; margin: 2px; display: inline-block; font-size: 0.85em;">{kw}</span>'
-                                    for kw in q_data['keywords']
+                                    f'<span style="background-color: #e1f5ff; padding: 4px 8px; '
+                                    f'border-radius: 4px; margin: 2px; display: inline-block; '
+                                    f'font-size: 0.85em;">{keyword}</span>'
+                                    for keyword in q_data['keywords']
                                 ])
-                                
                                 st.markdown(
-                                    f'<div style="margin-top: 8px; margin-bottom: 20px;">🔑 <b>Look for:</b> {keywords_html}</div>',
+                                    f'<div style="margin-top: 8px; margin-bottom: 20px;">'
+                                    f'🔑 <b>Look for:</b> {keywords_html}</div>',
                                     unsafe_allow_html=True
                                 )
-                            
-                            # Download questions with keywords
-                            download_text = ""
-                            for i, q_data in enumerate(questions_data, 1):
-                                download_text += f"{i}. {q_data['question']}\n"
-                                download_text += f"   Key Concepts: {', '.join(q_data['keywords'])}\n\n"
-                            
-                            st.download_button(
-                                "📥 Download Questions & Keywords",
-                                download_text,
-                                f"interview_questions_{info['name'].replace(' ', '_')}.txt",
-                                "text/plain"
-                            )
-                        
-                        except Exception as e:
-                            st.error(f"Error: {str(e)}")
-                            import traceback
-                            st.code(traceback.format_exc())
+                        else:
+                            # Fallback if format is different
+                            st.markdown(f"**{i}. {q_data}**")
             else:
-                st.info("No shortlisted candidates")
+                st.info("No candidates were shortlisted. Try lowering the threshold or uploading more resumes.")
         else:
             st.info("Screen candidates first in the 'Screen Candidates' tab")
