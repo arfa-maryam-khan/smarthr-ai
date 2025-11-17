@@ -53,29 +53,45 @@ with st.sidebar:
     st.title("🤖 SmartHR AI")
     st.markdown("---")
     
-    # Check if navigation was triggered from home page
+    # Initialize page in session state if not exists
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "🏠 Home"
+    
+    # Check if navigation was triggered from a button
     if 'nav_target' in st.session_state and st.session_state.nav_target:
-        default_page = st.session_state.nav_target
-        st.session_state.nav_target = None  # Reset
-    else:
-        default_page = "🏠 Home"
+        st.session_state.current_page = st.session_state.nav_target
+        st.session_state.nav_target = None
     
-    # Get the index of the default page
+    # Get the index of the current page
     pages = ["🏠 Home", "💬 Policy Assistant", "📄 Recruitment Hub"]
-    default_index = pages.index(default_page) if default_page in pages else 0
+    current_index = pages.index(st.session_state.current_page) if st.session_state.current_page in pages else 0
     
+    # Radio button for navigation
     page = st.radio(
         "Navigate",
         pages,
-        index=default_index
+        index=current_index,
+        key="page_radio"
     )
     
+    # Update session state when radio changes
+    if page != st.session_state.current_page:
+        st.session_state.current_page = page
+    
     st.markdown("---")
+    
+    # Quick home button (only show if not on home page)
+    if st.session_state.current_page != "🏠 Home":
+        if st.button("🏠 Quick Home", use_container_width=True, key="sidebar_home"):
+            st.session_state.current_page = "🏠 Home"
+            st.rerun()
+        st.markdown("---")
+    
     st.caption("Powered by Groq + Sentence-BERT + FAISS")
 # ============================================================
 # HOME PAGE
 # ============================================================
-if page == "🏠 Home":
+if st.session_state.current_page == "🏠 Home":
     st.markdown('<p class="main-header">🤖 SmartHR AI</p>', unsafe_allow_html=True)
     st.markdown("### Intelligent HR Assistant for Policy Management & Recruitment")
     
@@ -92,8 +108,8 @@ if page == "🏠 Home":
         """)
         
         # Navigation button
-        if st.button("→ Go to Policy Assistant", key="btn_policy", use_container_width=True, type="primary"):
-            st.session_state.nav_target = "💬 Policy Assistant"
+        if st.button("🚀 Launch Policy Assistant", key="btn_policy", use_container_width=True, type="primary"):
+            st.session_state.current_page = "💬 Policy Assistant"
             st.rerun()
     
     with col2:
@@ -105,8 +121,8 @@ if page == "🏠 Home":
         """)
         
         # Navigation button
-        if st.button("→ Go to Recruitment Hub", key="btn_recruit", use_container_width=True, type="primary"):
-            st.session_state.nav_target = "📄 Recruitment Hub"
+        if st.button("🚀 Launch Recruitment Hub", key="btn_recruit", use_container_width=True, type="primary"):
+            st.session_state.current_page = "📄 Recruitment Hub"
             st.rerun()
     
     st.markdown("---")
@@ -115,10 +131,10 @@ if page == "🏠 Home":
 # ============================================================
 # POLICY ASSISTANT
 # ============================================================
-elif page == "💬 Policy Assistant":
+elif st.session_state.current_page == "💬 Policy Assistant":
     # Back to Home button
-    if st.button("← Back to Home", key="home_from_policy"):
-        st.session_state.nav_target = "🏠 Home"
+    if st.button("← Back to Home", key="home_from_policy", type="secondary"):
+        st.session_state.current_page = "🏠 Home"
         st.rerun()
 
     st.title("💬 HR Policy Assistant")
@@ -192,10 +208,10 @@ elif page == "💬 Policy Assistant":
 # ============================================================
 # RECRUITMENT HUB
 # ============================================================
-elif page == "📄 Recruitment Hub":
+elif st.session_state.current_page == "📄 Recruitment Hub":
     # Back to Home button
-    if st.button("← Back to Home", key="home_from_recruit"):
-        st.session_state.nav_target = "🏠 Home"
+    if st.button("← Back to Home", key="home_from_policy", type="secondary"):
+        st.session_state.current_page = "🏠 Home"
         st.rerun()
 
     st.title("📄 Recruitment Hub")
@@ -205,7 +221,7 @@ elif page == "📄 Recruitment Hub":
         with st.spinner("Loading AI models... (first time takes ~1 min)"):
             try:
                 st.session_state.recruitment_engine = RecruitmentEngine()
-                st.success("✅ Ready!", icon="✅")
+                st.success("Ready!", icon="✅")
             except Exception as e:
                 st.error(f"Error: {str(e)}")
                 st.info("💡 Check your GROQ_API_KEY in .env file")
