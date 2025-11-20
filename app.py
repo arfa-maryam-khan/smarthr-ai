@@ -1,13 +1,13 @@
 """
 SmartHR AI - Main Application Interface
 
-This is the heart of the Streamlit app. It handles:
+This is the UI of the Streamlit app. It handles:
 - Navigation between pages (Home, Policy Assistant, Recruitment Hub)
 - UI rendering for all three pages
 - Session state management (keeps data between reruns)
 - File uploads and processing
 
-Think of this as the "frontend" that users interact with. All the heavy lifting
+This is the UI that users interact with. All the heavy lifting
 (AI models, parsing, screening) happens in the modules/ folder.
 """
 
@@ -19,24 +19,18 @@ import pandas as pd
 import plotly.graph_objects as go
 
 
-# ============================================================
 # PAGE CONFIGURATION
-# ============================================================
-
-# Must be the first Streamlit command - sets up the page layout and browser tab
+# sets up the page layout and browser tab
 st.set_page_config(
     page_title="SmartHR AI",
     page_icon="🤖",
-    layout="wide"  # Use full screen width
+    layout="wide"
 )
 
 
-# ============================================================
 # SESSION STATE INITIALIZATION
-# ============================================================
-
 # Streamlit reruns the entire script on every interaction. Session state lets us
-# persist data between reruns (like keeping a chatbot loaded or remembering results).
+# persist data between reruns.
 
 # Policy chatbot state
 if 'policy_chatbot' not in st.session_state:
@@ -57,13 +51,8 @@ if 'page' not in st.session_state:
     st.session_state.page = 'home'  # Start on home page
 
 
-# ============================================================
 # NAVIGATION FUNCTIONS
-# ============================================================
-
-# These callback functions change which page is displayed.
-# Using callbacks (on_click) is more reliable than directly setting state
-# because Streamlit processes callbacks before the main script runs.
+# These callback(on_click) functions change which page is displayed.
 
 def nav_home():
     """Navigate to the home page"""
@@ -78,10 +67,7 @@ def nav_recruitment():
     st.session_state.page = 'recruitment'
 
 
-# ============================================================
 # SIDEBAR NAVIGATION
-# ============================================================
-
 # The sidebar is visible on all pages and provides navigation
 with st.sidebar:
     st.title("🤖 SmartHR AI")
@@ -96,10 +82,7 @@ with st.sidebar:
     st.caption("Powered by Groq • Sentence-BERT • FAISS")
 
 
-# ============================================================
 # HOME PAGE
-# ============================================================
-
 if st.session_state.page == 'home':
     # Main header
     st.title("🤖 SmartHR AI")
@@ -150,10 +133,7 @@ if st.session_state.page == 'home':
     st.markdown("**Sentence-BERT** • **FAISS** • **Groq Llama 3.3** • **PyPDF2**")
 
 
-# ============================================================
 # POLICY ASSISTANT PAGE
-# ============================================================
-
 elif st.session_state.page == 'policy':
     # Back button at the top
     st.button("← Back to Home", key="back_policy", on_click=nav_home)
@@ -169,7 +149,7 @@ elif st.session_state.page == 'policy':
             key="policy_uploader"
         )
         
-        # Process button - does the heavy lifting
+        # Process button
         if st.button("🚀 Process Documents", type="primary", key="process_docs"):
             if uploaded_files:
                 with st.spinner("Processing documents... This may take a minute."):
@@ -249,10 +229,7 @@ elif st.session_state.page == 'policy':
         st.info("👆 Upload and process policy documents to start asking questions")
 
 
-# ============================================================
 # RECRUITMENT HUB PAGE
-# ============================================================
-
 elif st.session_state.page == 'recruitment':
     # Back button at the top
     st.button("← Back to Home", key="back_recruit", on_click=nav_home)
@@ -272,11 +249,7 @@ elif st.session_state.page == 'recruitment':
     # Two tabs: screening and interview questions
     tab1, tab2 = st.tabs(["🎯 Screen Candidates", "❓ Interview Questions"])
     
-    
-    # ============================================================
     # TAB 1: CANDIDATE SCREENING
-    # ============================================================
-    
     with tab1:
         # Two-column layout for inputs
         col1, col2 = st.columns(2)
@@ -393,11 +366,7 @@ elif st.session_state.page == 'recruitment':
                 use_container_width=True
             )
     
-    
-    # ============================================================
     # TAB 2: INTERVIEW QUESTIONS
-    # ============================================================
-    
     with tab2:
         # Only show this tab if we have screening results
         if st.session_state.screening_results:
@@ -447,7 +416,7 @@ elif st.session_state.page == 'recruitment':
                             st.error(f"Error generating questions: {str(e)}")
                             st.rerun()
                 
-                # Display generated questions (after rerun)
+                # Display generated questions
                 if 'generated_questions' in st.session_state and st.session_state.generated_questions:
                     st.markdown("### ❓ Interview Questions")
                     st.info("💡 Keywords below each question help you evaluate the candidate's answer")

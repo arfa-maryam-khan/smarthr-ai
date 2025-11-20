@@ -1,6 +1,5 @@
 """
 Generate all sample data for SmartHR AI
-Run this once to populate data folder
 """
 from fpdf import FPDF
 import os

@@ -1,9 +1,8 @@
 """
-HR Policy Chatbot - Your friendly AI assistant for company policies
+HR Policy Chatbot
 
 This chatbot uses RAG (Retrieval-Augmented Generation) to answer questions about
-HR policies. Think of it like a super-smart search engine that can understand what
-you're really asking and give you actual answers, not just matching keywords.
+HR policies. 
 
 How it works:
 1. We break policy documents into small chunks
@@ -15,8 +14,7 @@ Tech stack: Sentence-BERT for understanding, FAISS for fast search, Groq for ans
 """
 
 import os
-import pickle
-from typing import List, Dict, Optional
+from typing import List, Dict
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
@@ -30,10 +28,6 @@ load_dotenv()
 class PolicyChatbot:
     """
     An AI assistant that answers questions about your company's HR policies.
-    
-    Unlike a regular search, this understands what you mean - so asking "How many
-    vacation days?" will find the answer even if the policy says "PTO allowance"
-    instead of "vacation days".
     """
     
     def __init__(self, data_dir: str = "data/policies/"):
@@ -49,9 +43,9 @@ class PolicyChatbot:
         self.documents = []  # Original docs: [{source, content, chunks}]
         self.chunks = []  # All text chunks combined from all documents
         self.chunk_sources = []  # Keeps track of which chunk came from which file
-        self.index = None  # FAISS search index (built later)
+        self.index = None  # FAISS search index
         
-        # Load the AI model that understands text meaning
+        # Load the AI model
         print("🔄 Loading Sentence-BERT (the brain that understands your questions)...")
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
         print("✅ Ready to understand your questions!")
@@ -59,7 +53,7 @@ class PolicyChatbot:
         # Set up the AI that generates natural language answers
         api_key = os.getenv("GROQ_API_KEY")
         
-        # If not in environment, check Streamlit secrets (for cloud deployment)
+        # If not in environment, check Streamlit secrets
         if not api_key:
             try:
                 import streamlit as st
@@ -77,23 +71,15 @@ class PolicyChatbot:
     
     def chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
         """
-        Break long documents into bite-sized pieces that the AI can work with.
-        
-        Why chunk? Large documents are hard to process, and we need to find the exact
-        section that answers each question. We use overlapping chunks so context isn't
-        lost when we split between sentences.
-        
+        Break long documents into chunks that the AI can work with.
+
         Args:
             text: The full document text
-            chunk_size: How many words per chunk (500 is a sweet spot)
-            overlap: How many words to repeat between chunks (keeps context)
+            chunk_size: How many words per chunk
+            overlap: How many words to repeat between chunks
         
         Returns:
             List of text chunks, like pages in a book
-        
-        Example:
-            "Policy says X. Policy says Y. Policy says Z."
-            → ["Policy says X. Policy says Y.", "Policy says Y. Policy says Z."]
         """
         words = text.split()
         chunks = []
@@ -111,10 +97,6 @@ class PolicyChatbot:
     def load_policies(self) -> bool:
         """
         Read all PDF policy documents from the policies folder.
-        
-        This scans your data/policies/ folder for PDF files and extracts the text
-        from each one. We don't actually process them yet - that happens in
-        build_vector_store().
         
         Returns:
             True if we found and loaded at least one document, False otherwise
@@ -146,7 +128,7 @@ class PolicyChatbot:
                 self.documents.append({
                     'content': text,
                     'source': filename,  # Keep track of where this came from
-                    'chunks': []  # Will fill this in build_vector_store()
+                    'chunks': []
                 })
             else:
                 print(f"⚠️ Couldn't extract text from {filename} (might be scanned image?)")
@@ -163,9 +145,6 @@ class PolicyChatbot:
         1. Break documents into chunks (small pieces)
         2. Convert each chunk into a "meaning vector" using AI
         3. Build a FAISS index for lightning-fast search
-        
-        The result? When someone asks "How many sick days?", we can instantly find
-        every chunk that talks about sick leave, even if they use different words.
         
         Returns:
             True if everything worked, False if something went wrong
@@ -198,8 +177,7 @@ class PolicyChatbot:
             print("❌ No content to process!")
             return False
         
-        # Convert text chunks into numbers that represent their meaning
-        # This is called "semantic embedding" - similar meanings = similar numbers
+        # "semantic embedding" - similar meanings = similar numbers
         print(f"🧠 Converting {len(all_chunks)} chunks into AI-understandable format...")
         embeddings = self.model.encode(
             all_chunks, 
@@ -208,9 +186,8 @@ class PolicyChatbot:
         )
         
         # Build a FAISS index for super-fast similarity search
-        # FAISS = Facebook AI Similarity Search (production-grade, handles billions of vectors)
         print("🔍 Creating search index...")
-        dimension = embeddings.shape[1]  # Usually 384 for this model
+        dimension = embeddings.shape[1]
         self.index = faiss.IndexFlatL2(dimension)  # L2 = Euclidean distance
         self.index.add(embeddings)
         
@@ -232,9 +209,6 @@ class PolicyChatbot:
         
         This is the "retrieval" part of RAG. We convert the question into the same
         format as our chunks, then use FAISS to find the closest matches.
-        
-        Why this works: If you ask "vacation days" and a chunk talks about "PTO",
-        the AI embeddings will be similar because they mean the same thing.
         
         Args:
             query: The employee's question
@@ -286,8 +260,6 @@ class PolicyChatbot:
         1. RETRIEVE: Find relevant policy chunks using semantic search
         2. AUGMENT: Give those chunks to the AI as context
         3. GENERATE: AI writes a natural answer based only on the policies
-        
-        The result? Accurate answers that cite sources, no hallucinations.
         
         Args:
             query: The employee's question (e.g., "How many vacation days do I get?")
@@ -343,7 +315,7 @@ Answer:"""
                     },
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,  # Low temperature = more factual, less creative
+                temperature=0.3,
                 max_tokens=500
             )
             

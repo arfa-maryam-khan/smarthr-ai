@@ -1,11 +1,9 @@
 """
-Recruitment Engine - AI-powered candidate screening and interview prep
+Recruitment Engine - candidate screening and interview prep
 
 This module handles two main jobs:
 1. Screen resumes against job descriptions (find the best matches)
 2. Generate personalized interview questions for shortlisted candidates
-
-Think of it as your AI recruiting assistant that never gets tired of reading resumes!
 """
 
 import os
@@ -31,7 +29,7 @@ class RecruitmentEngine:
     
     def __init__(self):
         """
-        Fire up all the AI models we need for recruitment.
+        execute all the AI models we need for recruitment.
         
         This loads:
         1. Resume parser (extracts info from PDFs)

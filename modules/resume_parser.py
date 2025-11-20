@@ -24,9 +24,7 @@ load_dotenv()
 class ResumeParser:
     """
     Intelligent resume parser that extracts structured information from PDFs.
-    
-    Resumes are notoriously messy - different formats, layouts, styles. This parser
-    uses multiple techniques (NLP, regex, AI) to reliably extract:
+    This parser uses multiple techniques (NLP, regex, AI) to reliably extract:
     - Name, email, phone
     - Skills (using AI to understand context)
     - Education background
@@ -85,9 +83,7 @@ class ResumeParser:
         """
         Extract raw text from a resume file.
         
-        Supports PDF and plain text files. PDFs are the tricky ones - we use
-        PyPDF2 to extract the text, though it sometimes struggles with fancy
-        formatting or scanned documents.
+        Supports PDF and plain text files. We use PyPDF2 to extract the text.
         
         Args:
             file_path: Path to the resume file
@@ -106,9 +102,7 @@ class ResumeParser:
     def extract_name(self, text: str) -> str:
         """
         Figure out the candidate's name from their resume.
-        
-        This is trickier than it sounds! Resumes have names in different places,
-        sometimes with titles or credentials. We try multiple strategies:
+        We try multiple strategies:
         
         1. spaCy NER (looks for PERSON entities)
         2. Pattern matching (look for title-case words at the top)
@@ -177,7 +171,7 @@ Candidate name:"""
                 response = self.client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,  # Be precise, not creative
+                    temperature=0.0,
                     max_tokens=50
                 )
                 
@@ -187,7 +181,7 @@ Candidate name:"""
                 if name and '@' not in name and 3 < len(name) < 50 and len(name.split()) <= 4:
                     return name
             except:
-                pass  # If AI fails, move to fallback
+                pass
         
         # Give up and return a placeholder
         return "Unknown Candidate"
@@ -197,7 +191,7 @@ Candidate name:"""
         """
         Find the candidate's email address.
         
-        Uses regex to match common email patterns. Pretty straightforward!
+        Uses regex to match common email patterns.
         
         Args:
             text: Full resume text
@@ -214,11 +208,6 @@ Candidate name:"""
     def extract_phone(self, text: str) -> Optional[str]:
         """
         Find the candidate's phone number.
-        
-        Handles different formats:
-        - (123) 456-7890
-        - 123-456-7890
-        - +1 123 456 7890
         
         Args:
             text: Full resume text
@@ -274,10 +263,6 @@ Candidate name:"""
         """
         Figure out how many years of experience the candidate has.
         
-        Looks for phrases like:
-        - "5 years of experience"
-        - "3+ years in"
-        
         Args:
             text: Full resume text
         
@@ -295,17 +280,13 @@ Candidate name:"""
             matches = re.findall(pattern, text.lower())
             years_found.extend([int(year) for year in matches])
         
-        # Return the highest number mentioned (if any)
+        # Return the highest number mentioned
         return max(years_found) if years_found else 0
     
     
     def extract_skills_from_text(self, text: str) -> List[str]:
         """
         Extract technical skills from a resume using AI.
-        
-        This is way better than keyword matching because AI understands context.
-        For example, if someone says "built scalable APIs with FastAPI", AI knows
-        to extract both "API Development" and "FastAPI" as skills.
         
         Args:
             text: Full resume text
@@ -332,19 +313,19 @@ JSON Array:"""
             response = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,  # Low creativity - we want accuracy
+                temperature=0.1,
                 max_tokens=300
             )
             
             result = response.choices[0].message.content.strip()
             
-            # Clean up the response (sometimes wrapped in markdown)
+            # Clean up the response
             if '```json' in result:
                 result = result.split('```json')[1].split('```')[0]
             elif '```' in result:
                 result = result.split('```')[1].split('```')[0]
             
-            # Make sure we have a proper JSON array
+            # JSON array
             if '[' in result and ']' in result:
                 result = '[' + result.split('[', 1)[1]
                 result = result.split(']')[0] + ']'
@@ -365,10 +346,7 @@ JSON Array:"""
     def extract_skills_from_jd(self, jd_text: str) -> List[str]:
         """
         Extract required skills from a job description using AI.
-        
         This figures out what technical skills the job actually requires.
-        Again, AI is better than keyword matching because it understands
-        context and variations in how requirements are written.
         
         Args:
             jd_text: Full job description text
@@ -403,13 +381,13 @@ JSON Array:"""
             result = response.choices[0].message.content.strip()
             print(f"✅ AI responded: {result[:100]}...")
             
-            # Clean up markdown wrapping
+            # Clean up
             if '```json' in result:
                 result = result.split('```json')[1].split('```')[0]
             elif '```' in result:
                 result = result.split('```')[1].split('```')[0]
             
-            # Extract just the JSON array part
+            # Extract JSON array
             if '[' in result and ']' in result:
                 result = '[' + result.split('[', 1)[1]
                 result = result.split(']')[0] + ']'
@@ -437,8 +415,7 @@ JSON Array:"""
         """
         Main parsing function - extract all info from a resume file.
         
-        This orchestrates all the extraction methods to turn a messy PDF
-        into structured, usable data.
+        This uses all the extraction methods to turn a PDF into structured, usable data.
         
         Args:
             file_path: Path to the resume PDF
@@ -476,7 +453,7 @@ JSON Array:"""
                 'skills': skills,
                 'education': self.extract_education(text),
                 'experience_years': self.extract_experience_years(text),
-                'raw_text': text  # Keep the full text for semantic analysis
+                'raw_text': text
             }
             
         except Exception as e:
