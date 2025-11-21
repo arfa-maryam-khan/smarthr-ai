@@ -58,19 +58,6 @@ Top Questions:
 
 ---
 
-## 🎬 See It In Action
-
-### Home Page
-![Clean interface with two big buttons](screenshots/home.png)
-
-### Chatting About Policies
-![Asking about vacation days and getting instant answers](screenshots/policy.png)
-
-### Screening Candidates
-![Ranked list of candidates with scores and charts](screenshots/recruitment.png)
-
----
-
 ## 🛠️ Tech Stack
 
 **What's under the hood:**
